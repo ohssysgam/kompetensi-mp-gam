@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Data from Google Sheets</title>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <!-- Font Awesome CDN for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>CARI KOMPETENSI SAYA</h1>
+    <div class="search-container">
+        <label for="search">Pencarian: </label>
+        <input type="text" id="search" placeholder="Masukan Nama di Sini">
+    </div>
+    <div class="button-container">
+        <button onclick="searchData()" class="button">
+            <i class="fas fa-search"></i> Search
+        </button>
+        <button onclick="reset()" class="button reset-button">
+            <i class="fas fa-redo-alt"></i> Reset
+        </button>
+    </div>
+
+    <div id="loading" style="display: none;">
+        <span>Sedang mencari data</span>
+        <span class="dots"></span><span class="dots"></span><span class="dots"></span>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        // Your Google Sheets API Key and Spreadsheet ID
+        const apiKey = 'AIzaSyA7Wbhd7KYAMKt10vKVnJY81qDWTCs9MPw'; // Ensure API key is correct
+        const spreadsheetId = '1IUZpjUEHsZe-4k4V6w1JqDNSH9zw9gKpceogu6cqx3Q'; // ID of the spreadsheet
+
+        // Ranges for the sheets
+        const sheet1Range = 'BASE MANPOWER!E:I';  // Data in Sheet1 (columns A-C)
+        const sheet2Range = 'KOMPETENSI SEARCH GITHUB!B:G';  // Range for competencies (Tabel 2)
+        const sheet3Range = 'DEPT_JAB_GITHUB!A:E';  // Range for competencies A:E (Tabel 3)
+
+        function searchData() {
+            const searchTerm = document.getElementById('search').value.trim().toLowerCase();
+            if (!searchTerm) {
+                alert('Please enter a name to search!');
+                return;
+            }
+
+            // Show loading animation
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').innerHTML = ''; // Clear previous results
+
+            // URL to fetch data from the sheets
+            const sheet1Url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheet1Range}?key=${apiKey}`;
+            const sheet2Url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheet2Range}?key=${apiKey}`;
+            const sheet3Url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheet3Range}?key=${apiKey}`;
+
+            // Fetch data from all three sheets simultaneously
+            Promise.all([
+                fetch(sheet1Url).then(response => response.json()),
+                fetch(sheet2Url).then(response => response.json()),
+                fetch(sheet3Url).then(response => response.json()) // Fetch the third sheet
+            ])
+            .then(([data1, data2, data3]) => {
+                console.log("Data from Sheet 1:", data1);
+                console.log("Data from Sheet 2:", data2);
+                console.log("Data from Sheet 3:", data3);
+
+                // Filter data from Sheet 1 based on search term
+                const results1 = (data1.values || []).filter(row => row[0] && row[0].toLowerCase().includes(searchTerm));
+                const results2 = (data2.values || []).filter(row => row[0] && row[0].toLowerCase().includes(searchTerm));
+                const results3 = (data3.values || []).filter(row => row[0] && row[0].toLowerCase().includes(searchTerm));
+
+                // Display results from Sheet 1 (Data Manpower)
+                displayResults(results1, 'Data Manpower');
+
+                // Display results from Sheet 2 (Tabel 2)
+                displayResults(results2, 'Daftar Kompetensi');
+
+                // Match data from Tabel 1 (Sheet 1) with Sheet 3 based on Department and Jabatan
+                displayCompetencyRecommendations(results1, data3.values); // Pass data from Sheet 3 directly
+
+                // Hide loading animation after data is displayed
+                document.getElementById('loading').style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error fetching data:', error);
+                document.getElementById('loading').innerHTML = 'DATA BENAR TAPI ADA YANG TIDAK TAMPIL';
+            });
+        }
+
+        // Function to display results from different sheets (Sheet 1, Sheet 2)
+        function displayResults(results, sheetName) {
+            const resultsDiv = document.getElementById('results');
+            const section = document.createElement('section');
+            const title = document.createElement('h2');
+            title.innerText = sheetName;
+            section.appendChild(title);
+
+            if (results.length === 0) {
+                section.innerHTML += `<p>No data found for ${sheetName}. Try searching with different criteria.</p>`;
+                resultsDiv.appendChild(section);
+                return;
+            }
+
+            // Create table headers for each sheet
+            const table = document.createElement('table');
+            let header;
+            if (sheetName === "Data Manpower") {
+                header = document.createElement('tr');
+                header.innerHTML = '<th>NAMA</th><th>DEPARTEMENT</th><th>JABATAN</th>';
+            } else if (sheetName === "Daftar Kompetensi") {
+                header = document.createElement('tr');
+                header.innerHTML = '<th>Name</th><th>Department</th><th>Jabatan</th><th>Nama Pelatihan</th><th>Status Competency</th>';
+            }
+            table.appendChild(header);
+
+            // Loop through the rows and add them to the table
+            results.forEach(row => {
+                const tr = document.createElement('tr');
+                if (sheetName === "Data Manpower") {
+                    tr.innerHTML = `<td>${row[0]}</td><td>${row[1]}</td><td>${row[4]}</td>`;
+                } else if (sheetName === "Daftar Kompetensi") {
+                    let statusCompetency = row[5];  // Get the value of the status
+                    let statusText = "";
+                    let statusColor = "";
+                    if (statusCompetency === "Y") {
+                        statusText = "DONE";
+                        statusColor = "green";
+                    } else if (statusCompetency === "OFF") {
+                        statusText = "NEEDS TRAINING";
+                        statusColor = "red";
+                    } else if (statusCompetency === "Y/I") {
+                        statusText = "DONE INTERNAL/BEFORE";
+                        statusColor = "blue";
+                    }
+
+                    tr.innerHTML = `<td>${row[0]}</td><td>${row[1]}</td><td>${row[3]}</td><td>${row[4]}</td><td style="color:${statusColor};">${statusText}</td>`;
+                }
+                table.appendChild(tr);
+            });
+
+            section.appendChild(table);
+            resultsDiv.appendChild(section);
+        }
+
+        // Function to display competency recommendations based on Department and Jabatan from Tabel 1 (Sheet 1) and Sheet 3
+        function displayCompetencyRecommendations(results1, data3) {
+            const resultsDiv = document.getElementById('results');
+            const section = document.createElement('section');
+            const title = document.createElement('h2');
+            title.innerText = 'REKOMENDASI KOMPETENSI JABTAN';
+            section.appendChild(title);
+
+            if (results1.length === 0 || data3.length === 0) {
+                section.innerHTML += `<p>No matching data found between Tabel 1 (Sheet 1) and Sheet 3 for competency recommendations.</p>`;
+                resultsDiv.appendChild(section);
+                return;
+            }
+
+            const matchingResults = [];
+
+            // Loop through the data in Tabel 1 (Sheet 1) and match with data in Sheet 3
+            results1.forEach((row1) => {
+                const department1 = row1[1].trim().toLowerCase(); // Department from Tabel 1 (Sheet 1)
+                const jabatan1 = row1[4].trim().toLowerCase(); // Jabatan from Tabel 1 (Sheet 1)
+
+                // Loop through Sheet 3 and match Department and Jabatan
+                data3.forEach((row3) => {
+                    const department3 = row3[0].trim().toLowerCase(); // Department from Sheet 3
+                    const jabatan3 = row3[2].trim().toLowerCase(); // Jabatan from Sheet 3
+
+                    // If Department and Jabatan match, add to matchingResults
+                    if (department1 === department3 && jabatan1 === jabatan3) {
+                        matchingResults.push(row3); // Push matched data from Sheet 3 (competency recommendations)
+                    }
+                });
+            });
+
+            // If no matches are found
+            if (matchingResults.length === 0) {
+                section.innerHTML += `<p>No matching competency data found for the selected department and jabatan.</p>`;
+                resultsDiv.appendChild(section);
+                return;
+            }
+
+            // Display competency recommendations from Sheet 3
+            const table = document.createElement('table');
+            const header = document.createElement('tr');
+            header.innerHTML = '<th>DEPT</th><th>JABATAN</th><th>KODE PELATIHAN</th><th>NAMA PELATIHAN</th>';
+            table.appendChild(header);
+
+            matchingResults.forEach((row) => {
+                const tr = document.createElement('tr');
+                let statusCompetency = row[4];  // Get the value of the status
+                let statusText = "";
+                let statusColor = "";
+                if (statusCompetency === "Y") {
+                    statusText = "DONE";
+                    statusColor = "green";
+                } else if (statusCompetency === "OFF") {
+                    statusText = "NEEDS TRAINING";
+                    statusColor = "red";
+                } else if (statusCompetency === "Y/I") {
+                    statusText = "DONE INTERNAL/BEFORE";
+                    statusColor = "blue";
+                }
+
+                tr.innerHTML = `<td>${row[0]}</td><td>${row[2]}</td><td>${row[3]}</td><td>${row[4]}</td><td style="color:${statusColor};">${statusText}</td>`;
+                table.appendChild(tr);
+            });
+
+            section.appendChild(table);
+            resultsDiv.appendChild(section);
+        }
+
+        // Function to reset the search input and results
+        function reset() {
+            document.getElementById('search').value = ''; // Clear the search input
+            document.getElementById('results').innerHTML = ''; // Clear previous results
+            document.getElementById('loading').style.display = 'none'; // Hide loading message
+        }
+    </script>
+</body>
+</html>
